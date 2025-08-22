@@ -479,10 +479,10 @@ static std::string FormatException(const std::exception* pex, const char* pszThr
 #endif
     if (pex)
         return strprintf(
-            "EXCEPTION: %s       \n%s       \n%s in %s       \n", typeid(*pex).name(), pex->what(), pszModule, pszThread);
+            "error: %s\n", pex->what());
     else
         return strprintf(
-            "UNKNOWN EXCEPTION       \n%s in %s       \n", pszModule, pszThread);
+            "error: unknown exception in %s\n", pszThread);
 }
 
 void PrintExceptionContinue(const std::exception* pex, const char* pszThread)
@@ -592,14 +592,18 @@ void ReadConfigFile(const std::string& confPath)
             // Parse key=value pairs
             size_t pos = line.find('=');
             if (pos != string::npos) {
-                string strKey = "-" + line.substr(0, pos);
+                // Extract key and value, trim whitespace first
+                string strKey = line.substr(0, pos);
                 string strValue = line.substr(pos + 1);
                 
-                // Trim whitespace
+                // Trim whitespace from key and value
                 strKey.erase(strKey.find_last_not_of(" \t\r\n") + 1);
                 strKey.erase(0, strKey.find_first_not_of(" \t\r\n"));
                 strValue.erase(strValue.find_last_not_of(" \t\r\n") + 1);
                 strValue.erase(0, strValue.find_first_not_of(" \t\r\n"));
+                
+                // Add command line prefix after trimming
+                strKey = "-" + strKey;
                 
                 InterpretNegativeSetting(strKey, strValue);
                 // Don't overwrite existing settings so command line settings override bitcoin.conf

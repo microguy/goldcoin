@@ -216,10 +216,8 @@ UniValue CallRPC(const std::string& strMethod, const UniValue& params)
     if (GetArg("-rpcpassword", "") == "") {
         // Try fall back to cookie-based authentication if no password is provided
         if (!GetAuthCookie(&strRPCUserColonPass)) {
-            throw std::runtime_error(strprintf(
-                _("Could not locate RPC credentials. No authentication cookie could be found, and no rpcpassword is set in the configuration file (%s)"),
-                    GetConfigFile(GetArg("-conf", BITCOIN_CONF_FILENAME)).string().c_str()));
-
+            // No credentials found - proceed without auth header for public commands
+            strRPCUserColonPass = "";  // Empty string signals no header
         }
     } else {
         strRPCUserColonPass = GetArg("-rpcuser", "") + ":" + GetArg("-rpcpassword", "");
@@ -229,7 +227,11 @@ UniValue CallRPC(const std::string& strMethod, const UniValue& params)
     assert(output_headers);
     evhttp_add_header(output_headers, "Host", host.c_str());
     evhttp_add_header(output_headers, "Connection", "close");
-    evhttp_add_header(output_headers, "Authorization", (std::string("Basic ") + EncodeBase64(strRPCUserColonPass)).c_str());
+    
+    // Add auth header only if credentials exist
+    if (!strRPCUserColonPass.empty()) {
+        evhttp_add_header(output_headers, "Authorization", (std::string("Basic ") + EncodeBase64(strRPCUserColonPass)).c_str());
+    }
 
     // Attach request data
     std::string strRequest = JSONRPCRequestObj(strMethod, params, 1).write() + "\n";
@@ -339,9 +341,6 @@ int CommandLineRPC(int argc, char *argv[])
                     throw;
             }
         } while (fWait);
-    }
-    catch (const std::exception&) {  // C++23: Use std exception
-        throw;
     }
     catch (const std::exception& e) {
         strPrint = std::string("error: ") + e.what();

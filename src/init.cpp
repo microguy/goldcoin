@@ -571,7 +571,6 @@ static void BlockNotifyCallback(bool initialSync, const CBlockIndex *pBlockIndex
 static bool fHaveGenesis = false;
 static std::mutex cs_GenesisWait;
 static CConditionVariable condvar_GenesisWait;
-static size_t genesisWaitCallbackIndex = 0; // Track our callback index
 
 static void BlockNotifyGenesisWait(bool, const CBlockIndex *pBlockIndex)
 {
@@ -1540,6 +1539,12 @@ bool AppInitMain(thread_group& threadGroup, CScheduler& scheduler)
                     strLoadError = _("Error initializing block database");
                     break;
                 }
+                
+                // Fix for C++23 refactor: ensure genesis is ready after InitBlockIndex
+                // InitBlockIndex creates the genesis block but doesn't set fHaveGenesis
+                if (!fHaveGenesis && mapBlockIndex.count(chainparams.GetConsensus().hashGenesisBlock) > 0) {
+                    fHaveGenesis = true;
+                }
 
                 // Check for changed -txindex state
                 if (fTxIndex != GetBoolArg("-txindex", DEFAULT_TXINDEX)) {
@@ -1699,6 +1704,7 @@ bool AppInitMain(thread_group& threadGroup, CScheduler& scheduler)
     //// debug print
     LogPrintf("mapBlockIndex.size() = %u\n",   mapBlockIndex.size());
     LogPrintf("nBestHeight = %d\n",                   chainActive.Height());
+    
     if (GetBoolArg("-listenonion", DEFAULT_LISTEN_ONION))
         StartTorControl(threadGroup, scheduler);
 

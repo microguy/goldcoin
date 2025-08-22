@@ -167,33 +167,53 @@ static bool HTTPReq_JSONRPC(HTTPRequest* req, const std::string &)
         req->WriteReply(HTTP_BAD_METHOD, "JSONRPC server handles only POST requests");
         return false;
     }
-    // Check authorization
-    std::pair<bool, std::string> authHeader = req->GetHeader("authorization");
-    if (!authHeader.first) {
-        req->WriteHeader("WWW-Authenticate", WWW_AUTH_HEADER_DATA);
-        req->WriteReply(HTTP_UNAUTHORIZED);
-        return false;
-    }
-
+    
     JSONRPCRequest jreq;
-    if (!RPCAuthorized(authHeader.second, jreq.authUser)) {
-        LogPrintf("ThreadRPCServer incorrect password attempt from %s\n", req->GetPeer().ToString());
+    
+    // Parse request first to check if it's a public command
+    UniValue valRequest;
+    std::string strRequest = req->ReadBody();
+    if (!valRequest.read(strRequest))
+        throw JSONRPCError(RPC_PARSE_ERROR, "Parse error");
+    
+    // Check if this is a public command that doesn't require auth
+    bool isPublicCommand = false;
+    if (valRequest.isObject()) {
+        UniValue methodVal = find_value(valRequest, "method");
+        if (methodVal.isStr()) {
+            std::string method = methodVal.get_str();
+            // getinfo is a public command that doesn't require authentication
+            if (method == "getinfo") {
+                isPublicCommand = true;
+            }
+        }
+    }
+    
+    // Check authorization only for non-public commands
+    std::pair<bool, std::string> authHeader = req->GetHeader("authorization");
+    if (!isPublicCommand) {
+        if (!authHeader.first) {
+            req->WriteHeader("WWW-Authenticate", WWW_AUTH_HEADER_DATA);
+            req->WriteReply(HTTP_UNAUTHORIZED);
+            return false;
+        }
+        
+        if (!RPCAuthorized(authHeader.second, jreq.authUser)) {
+            LogPrintf("ThreadRPCServer incorrect password attempt from %s\n", req->GetPeer().ToString());
 
-        /* Deter brute-forcing
-           If this results in a DoS the user really
-           shouldn't have their RPC port exposed. */
-        MilliSleep(250);
+            /* Deter brute-forcing
+               If this results in a DoS the user really
+               shouldn't have their RPC port exposed. */
+            MilliSleep(250);
 
-        req->WriteHeader("WWW-Authenticate", WWW_AUTH_HEADER_DATA);
-        req->WriteReply(HTTP_UNAUTHORIZED);
-        return false;
+            req->WriteHeader("WWW-Authenticate", WWW_AUTH_HEADER_DATA);
+            req->WriteReply(HTTP_UNAUTHORIZED);
+            return false;
+        }
     }
 
     try {
-        // Parse request
-        UniValue valRequest;
-        if (!valRequest.read(req->ReadBody()))
-            throw JSONRPCError(RPC_PARSE_ERROR, "Parse error");
+        // Request already parsed above
 
         // Set the URI
         jreq.URI = req->GetURI();
