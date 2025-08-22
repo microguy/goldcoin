@@ -8,8 +8,9 @@
 #include <sstream>
 
 // BDB magic bytes (for detection) - stored in little-endian
-const uint8_t BDB48_MAGIC[] = {0x62, 0x31, 0x05, 0x00};  // Btree magic for BDB 4.x (0x00053162 in LE)
-const uint8_t BDB18_MAGIC[] = {0x62, 0x31, 0x09, 0x00};  // Expected for BDB 18.x (0x00093162 in LE)
+const uint8_t BDB_BTREE_MAGIC[] = {0x62, 0x31, 0x05, 0x00};  // Btree magic (0x00053162 in LE)
+const uint8_t BDB48_VERSION = 0x09;  // BDB 4.8 version number at offset 16
+const uint8_t BDB18_VERSION = 0x0a;  // BDB 18.1 version number at offset 16
 
 class WalletMigrator::Impl {
 public:
@@ -43,22 +44,28 @@ WalletDBVersion WalletMigrator::detectVersion(const fs::path& walletPath) {
             std::to_string(header[14]) + " " + 
             std::to_string(header[15]));
             
-        // Check for BDB 4.8 signature
-        if (std::memcmp(header + 12, BDB48_MAGIC, 4) == 0) {
-            log("Detected Berkeley DB 4.8 format");
+        // Check for BDB Btree magic signature
+        if (std::memcmp(header + 12, BDB_BTREE_MAGIC, 4) == 0) {
+            // Check version byte at offset 16
+            uint8_t version = header[16];
+            log("BDB version byte at offset 16: 0x" + 
+                std::to_string(static_cast<int>(version)));
             
-            // Additional validation: Check page size (usually at offset 20)
-            uint32_t pageSize = *reinterpret_cast<uint32_t*>(header + 20);
-            log("Page size: " + std::to_string(pageSize));
-            if (pageSize == 4096 || pageSize == 8192 || pageSize == 16384 || pageSize == 32768) {
-                return WalletDBVersion::BDB_4_8;
+            if (version == BDB48_VERSION) {
+                log("Detected Berkeley DB 4.8 format (version 0x09)");
+                
+                // Additional validation: Check page size (usually at offset 20)
+                uint32_t pageSize = *reinterpret_cast<uint32_t*>(header + 20);
+                log("Page size: " + std::to_string(pageSize));
+                if (pageSize == 4096 || pageSize == 8192 || pageSize == 16384 || pageSize == 32768) {
+                    return WalletDBVersion::BDB_4_8;
+                }
+            } else if (version == BDB18_VERSION) {
+                log("Detected Berkeley DB 18.1 format (version 0x0a)");
+                return WalletDBVersion::BDB_18_1;
+            } else {
+                log("Unknown BDB version: 0x" + std::to_string(static_cast<int>(version)));
             }
-        }
-        
-        // Check for BDB 18.1 signature
-        if (std::memcmp(header + 12, BDB18_MAGIC, 4) == 0) {
-            log("Detected Berkeley DB 18.1 format");
-            return WalletDBVersion::BDB_18_1;
         }
     }
     
