@@ -293,9 +293,6 @@ static UniValue BIP22ValidationResult(const CValidationState& state)
     if (state.IsValid())
         return NullUniValue;
 
-    if (fQueueBlocks && nReportQueuedBlocks > REPORT_NONE && state.GetBlockQueued())
-        return NullUniValue;
-
     std::string strRejectReason = state.GetRejectReason();
     if (state.IsError())
         throw JSONRPCError(RPC_VERIFY_ERROR, strRejectReason);
